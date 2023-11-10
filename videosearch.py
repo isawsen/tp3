@@ -1,27 +1,24 @@
 import cv2
 import numpy as np
+import pandas as pd
+import os
 
 # Initialize SIFT detector
 sift = cv2.SIFT_create()
 
-# Function to extract features from an image
 def extract_features(image_path):
+    # Processing both PNG and JPEG images identically
     image = cv2.imread(image_path)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     keypoints, descriptors = sift.detectAndCompute(gray, None)
     return keypoints, descriptors
 
-# Function to match descriptors between two images
 def match_descriptors(descriptors1, descriptors2):
-    # Create BFMatcher object
     bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
-    # Match descriptors
     matches = bf.match(descriptors1, descriptors2)
-    # Sort them in the order of their distance (the lower the better)
     matches = sorted(matches, key=lambda x: x.distance)
     return matches
 
-# Indexing: Extract features from all frames of the video and store them
 def index_video_frames(video_frame_paths):
     indexed_frames = []
     for frame_path in video_frame_paths:
@@ -29,13 +26,14 @@ def index_video_frames(video_frame_paths):
         indexed_frames.append((frame_path, keypoints, descriptors))
     return indexed_frames
 
-# Search: Match features of test images against indexed frames
 def search_video(test_image_paths, indexed_frames):
+    # Adjusted to produce the output in the required format
     results = []
     for test_image_path in test_image_paths:
         _, test_descriptors = extract_features(test_image_path)
         best_match = None
         best_match_score = None
+        best_match_frame = None
         # Compare against each indexed frame
         for frame_path, _, frame_descriptors in indexed_frames:
             matches = match_descriptors(test_descriptors, frame_descriptors)
@@ -43,19 +41,22 @@ def search_video(test_image_paths, indexed_frames):
             if best_match is None or score > best_match_score:
                 best_match = frame_path
                 best_match_score = score
-        results.append((test_image_path, best_match, best_match_score))
+                best_match_frame = os.path.basename(frame_path).split('.')[0]  # Assuming frame name format is videoName_frameNumber.jpg
+        results.append((os.path.basename(test_image_path), best_match_frame, best_match_score))
     return results
 
+def write_results_to_csv(results, output_file='predictions.csv'):
+    df = pd.DataFrame(results, columns=['image', 'video_pred', 'minutage_pred'])
+    df.to_csv(output_file, index=False)
+
 # Example usage
-video_frame_paths = ['path/to/video/frame1.jpg', 'path/to/video/frame2.jpg', ...]  # Paths to your video frames
-test_image_paths = ['path/to/test/image1.png', 'path/to/test/image2.jpeg', ...]  # Paths to your test images
+directory_path = r'C:\Users\sawse\Downloads\INF8770_TP3_A2023\data\test\jpeg'  # Raw string for Windows path
+video_frame_paths = glob.glob(os.path.join(directory_path, '*.jpeg'))
+directory_path = r'C:\Users\sawse\Downloads\INF8770_TP3_A2023\data\test\png'  # Raw string for Windows path
+test_image_paths = glob.glob(os.path.join(directory_path, '*.png'))
 
-# Index the video frames
 indexed_frames = index_video_frames(video_frame_paths)
-
-# Search for each test image
 search_results = search_video(test_image_paths, indexed_frames)
 
-# Print results
-for test_image, best_match, score in search_results:
-    print(f"Test image: {test_image} - Best match: {best_match} with score: {score}")
+# Write the results to a CSV file compatible with evaluate.py
+write_results_to_csv(search_results)
